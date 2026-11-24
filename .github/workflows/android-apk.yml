@@ -27,8 +27,10 @@ jobs:
         with:
           gradle-version: "9.3.1"
 
-      - name: Set up Android SDK
+      - name: Set up Android SDK command-line tools and platform tools
         uses: android-actions/setup-android@v3
+        with:
+          packages: platform-tools
 
       - name: Accept Android SDK licenses and install required packages
         run: |
