@@ -1,0 +1,528 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Global Safety Net (Default Deny)
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // --- GLOBAL HELPERS ---
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() >= 1 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function isValidEmailKey(email) {
+      return email is string && email.size() >= 3 && email.size() <= 160;
+    }
+
+    function hasVerifiedEmail(email) {
+      return isSignedIn() &&
+             request.auth.token.email_verified == true &&
+             request.auth.token.email != null &&
+             request.auth.token.email.lower() == email.lower();
+    }
+
+    function membershipDoc(instId) {
+      return get(/databases/$(database)/documents/institutions/$(instId)/memberships/$(request.auth.uid));
+    }
+
+    function hasMembership(instId) {
+      return isSignedIn() &&
+             exists(/databases/$(database)/documents/institutions/$(instId)/memberships/$(request.auth.uid));
+    }
+
+    function isActiveMember(instId) {
+      return hasMembership(instId) &&
+             membershipDoc(instId).data.status == 'ACTIVE';
+    }
+
+    function memberRole(instId) {
+      return membershipDoc(instId).data.role;
+    }
+
+    function isDean(instId) {
+      return isActiveMember(instId) && memberRole(instId) == 'DEAN';
+    }
+
+    function hasPerm(instId, perm) {
+      return isActiveMember(instId) &&
+             (memberRole(instId) == 'DEAN' || perm in membershipDoc(instId).data.permissions);
+    }
+
+    function isBoundedStringList(val, maxItems) {
+      return val is list &&
+             val.size() <= maxItems &&
+             (val.size() == 0 || val[0] is string);
+    }
+
+    // --- VALIDATION HELPERS ---
+
+    function isValidUserInstitutionLink(data, userId, instId) {
+      return data.uid == userId &&
+             data.institutionId == instId &&
+             data.institutionName is string && data.institutionName.size() >= 2 && data.institutionName.size() <= 120 &&
+             data.role in ['DEAN', 'ADMIN', 'STAFF', 'STUDENT_LEADER', 'STUDENT'] &&
+             data.accentColorKey is string && data.accentColorKey.size() >= 1 && data.accentColorKey.size() <= 40 &&
+             data.joinedAt is timestamp && data.joinedAt <= request.time &&
+             data.updatedAt is timestamp && data.updatedAt <= request.time;
+    }
+
+    function isValidInstitutionCode(data, instId) {
+      return data.institutionId == instId &&
+             instId.matches('^NB-[A-Z0-9]+-[A-Z0-9]{4,8}$') &&
+             data.name is string && data.name.size() >= 2 && data.name.size() <= 120 &&
+             data.tagline is string && data.tagline.size() <= 160 &&
+             data.accentColorKey is string && data.accentColorKey.size() >= 1 && data.accentColorKey.size() <= 40 &&
+             data.deanUid is string && data.deanUid.size() >= 1 && data.deanUid.size() <= 128 &&
+             data.studentPassEnabled is bool &&
+             data.createdAt is timestamp && data.createdAt <= request.time &&
+             data.updatedAt is timestamp && data.updatedAt <= request.time;
+    }
+
+    function isValidInstitution(data, instId) {
+      return data.institutionId == instId &&
+             instId.matches('^NB-[A-Z0-9]+-[A-Z0-9]{4,8}$') &&
+             data.name is string && data.name.size() >= 2 && data.name.size() <= 120 &&
+             data.tagline is string && data.tagline.size() <= 160 &&
+             data.contactEmail is string && data.contactEmail.size() >= 3 && data.contactEmail.size() <= 160 &&
+             (!('contactPhone' in data) || (data.contactPhone is string && data.contactPhone.size() <= 40)) &&
+             data.accentColorKey is string && data.accentColorKey.size() >= 1 && data.accentColorKey.size() <= 40 &&
+             data.deanUid is string && data.deanUid.size() >= 1 && data.deanUid.size() <= 128 &&
+             data.deanName is string && data.deanName.size() >= 1 && data.deanName.size() <= 100 &&
+             data.studentPassEnabled is bool &&
+             data.studentPassHash is string && data.studentPassHash.size() <= 128 &&
+             data.confidentialFeedbackEnabled is bool &&
+             data.driveConnected is bool &&
+             (!('driveAccountEmail' in data) || (data.driveAccountEmail is string && data.driveAccountEmail.size() <= 160)) &&
+             (!('driveFolderName' in data) || (data.driveFolderName is string && data.driveFolderName.size() <= 160)) &&
+             (!('driveFolderId' in data) || (data.driveFolderId is string && data.driveFolderId.size() <= 160)) &&
+             isBoundedStringList(data.departments, 30) &&
+             isBoundedStringList(data.categories, 25) &&
+             isBoundedStringList(data.priorities, 10) &&
+             isBoundedStringList(data.activityTypes, 20) &&
+             isBoundedStringList(data.sportTypes, 20) &&
+             data.createdAt is timestamp && data.createdAt <= request.time &&
+             data.updatedAt is timestamp && data.updatedAt <= request.time;
+    }
+
+    function isValidMembership(data, instId, memberId) {
+      return data.uid == memberId &&
+             data.institutionId == instId &&
+             data.displayName is string && data.displayName.size() >= 1 && data.displayName.size() <= 100 &&
+             data.email is string && data.email.size() <= 160 &&
+             (!('designation' in data) || (data.designation is string && data.designation.size() <= 80)) &&
+             (!('department' in data) || (data.department is string && data.department.size() <= 80)) &&
+             data.role in ['DEAN', 'ADMIN', 'STAFF', 'STUDENT_LEADER', 'STUDENT'] &&
+             isBoundedStringList(data.permissions, 20) &&
+             isBoundedStringList(data.scopedDepartments, 30) &&
+             data.status in ['ACTIVE', 'SUSPENDED', 'REVOKED'] &&
+             data.joinMethod in ['DEAN_FOUNDER', 'INVITE', 'STUDENT_PASS'] &&
+             (!('passHashProof' in data) || (data.passHashProof is string && data.passHashProof.size() <= 128)) &&
+             data.createdAt is timestamp && data.createdAt <= request.time &&
+             data.updatedAt is timestamp && data.updatedAt <= request.time;
+    }
+
+    function isValidInvite(data, instId, inviteEmail) {
+      return data.email == inviteEmail &&
+             data.institutionId == instId &&
+             data.displayName is string && data.displayName.size() >= 1 && data.displayName.size() <= 100 &&
+             (!('designation' in data) || (data.designation is string && data.designation.size() <= 80)) &&
+             (!('department' in data) || (data.department is string && data.department.size() <= 80)) &&
+             data.role in ['ADMIN', 'STAFF', 'STUDENT_LEADER'] &&
+             isBoundedStringList(data.permissions, 20) &&
+             isBoundedStringList(data.scopedDepartments, 30) &&
+             data.status in ['PENDING', 'CLAIMED', 'REVOKED'] &&
+             data.invitedByUid is string && data.invitedByUid.size() >= 1 && data.invitedByUid.size() <= 128 &&
+             data.createdAt is timestamp && data.createdAt <= request.time &&
+             data.updatedAt is timestamp && data.updatedAt <= request.time;
+    }
+
+    function isValidNotice(data, instId) {
+      return data.institutionId == instId &&
+             data.title is string && data.title.size() >= 3 && data.title.size() <= 200 &&
+             data.normalizedTitle is string && data.normalizedTitle.size() >= 1 && data.normalizedTitle.size() <= 200 &&
+             data.description is string && data.description.size() >= 3 && data.description.size() <= 8000 &&
+             data.category is string && data.category.size() >= 1 && data.category.size() <= 60 &&
+             data.priority in ['EMERGENCY', 'URGENT', 'NORMAL'] &&
+             data.originDepartment is string && data.originDepartment.size() >= 1 && data.originDepartment.size() <= 80 &&
+             isBoundedStringList(data.visibilityTargets, 30) &&
+             data.visibilityTargets.size() >= 1 &&
+             data.targetAudience is string && data.targetAudience.size() >= 1 && data.targetAudience.size() <= 120 &&
+             data.lifecycleStatus in ['DRAFT', 'SCHEDULED', 'PUBLISHED', 'UPDATED', 'WITHDRAWN', 'EXPIRED', 'ARCHIVED'] &&
+             data.pinned is bool &&
+             data.publisherUid is string && data.publisherUid.size() >= 1 && data.publisherUid.size() <= 128 &&
+             data.publisherName is string && data.publisherName.size() >= 1 && data.publisherName.size() <= 100 &&
+             data.publisherRole is string && data.publisherRole.size() >= 1 && data.publisherRole.size() <= 40 &&
+             data.revisionNumber is int && data.revisionNumber >= 1 && data.revisionNumber <= 1000 &&
+             data.idempotencyKey is string && data.idempotencyKey.size() >= 4 && data.idempotencyKey.size() <= 128 &&
+             data.attachments is list && data.attachments.size() <= 10 &&
+             (data.attachments.size() == 0 || data.attachments[0] is map) &&
+             (!('scheduledPublishAt' in data) || data.scheduledPublishAt is timestamp) &&
+             (!('publishedAt' in data) || data.publishedAt is timestamp) &&
+             (!('expiresAt' in data) || data.expiresAt is timestamp) &&
+             data.createdAt is timestamp && data.createdAt <= request.time &&
+             data.updatedAt is timestamp && data.updatedAt <= request.time;
+    }
+
+    function isValidNoticeRevision(data, instId, noticeId) {
+      return data.institutionId == instId &&
+             data.noticeId == noticeId &&
+             data.revisionNumber is int && data.revisionNumber >= 1 &&
+             data.title is string && data.title.size() >= 1 && data.title.size() <= 200 &&
+             data.description is string && data.description.size() >= 1 && data.description.size() <= 8000 &&
+             data.lifecycleStatus is string && data.lifecycleStatus.size() >= 1 && data.lifecycleStatus.size() <= 40 &&
+             data.editedByUid is string && data.editedByUid == request.auth.uid &&
+             data.editedByName is string && data.editedByName.size() >= 1 && data.editedByName.size() <= 100 &&
+             data.changeSummary is string && data.changeSummary.size() >= 1 && data.changeSummary.size() <= 300 &&
+             data.createdAt is timestamp && data.createdAt <= request.time;
+    }
+
+    function isValidReadReceipt(data, instId, noticeId, memberUid) {
+      return data.institutionId == instId &&
+             data.noticeId == noticeId &&
+             data.uid == memberUid &&
+             data.displayName is string && data.displayName.size() >= 1 && data.displayName.size() <= 100 &&
+             data.acknowledged is bool &&
+             data.readAt is timestamp && data.readAt <= request.time;
+    }
+
+    function isValidCampusEvent(data, instId) {
+      return data.institutionId == instId &&
+             data.eventKind in ['ACTIVITY', 'SPORT'] &&
+             data.subType is string && data.subType.size() >= 1 && data.subType.size() <= 60 &&
+             data.title is string && data.title.size() >= 3 && data.title.size() <= 160 &&
+             data.description is string && data.description.size() >= 3 && data.description.size() <= 4000 &&
+             data.organizer is string && data.organizer.size() >= 1 && data.organizer.size() <= 120 &&
+             data.venue is string && data.venue.size() >= 1 && data.venue.size() <= 120 &&
+             data.scheduleText is string && data.scheduleText.size() >= 1 && data.scheduleText.size() <= 160 &&
+             data.eligibility is string && data.eligibility.size() >= 1 && data.eligibility.size() <= 200 &&
+             data.registrationOpen is bool &&
+             data.registeredCount is int && data.registeredCount >= 0 && data.registeredCount <= 100000 &&
+             (!('teamsInfo' in data) || (data.teamsInfo is string && data.teamsInfo.size() <= 2000)) &&
+             (!('fixturesSummary' in data) || (data.fixturesSummary is string && data.fixturesSummary.size() <= 3000)) &&
+             (!('resultsSummary' in data) || (data.resultsSummary is string && data.resultsSummary.size() <= 3000)) &&
+             data.status in ['UPCOMING', 'ONGOING', 'COMPLETED', 'CANCELLED'] &&
+             data.createdByUid is string && data.createdByUid.size() >= 1 && data.createdByUid.size() <= 128 &&
+             data.createdAt is timestamp && data.createdAt <= request.time &&
+             data.updatedAt is timestamp && data.updatedAt <= request.time;
+    }
+
+    function isValidEventRegistration(data, instId, eventId, memberUid) {
+      return data.institutionId == instId &&
+             data.eventId == eventId &&
+             data.uid == memberUid &&
+             data.displayName is string && data.displayName.size() >= 1 && data.displayName.size() <= 100 &&
+             data.department is string && data.department.size() <= 80 &&
+             data.createdAt is timestamp && data.createdAt <= request.time;
+    }
+
+    function isValidFeedback(data, instId) {
+      return data.institutionId == instId &&
+             data.authorUid is string && data.authorUid.size() >= 1 && data.authorUid.size() <= 128 &&
+             data.authorName is string && data.authorName.size() >= 1 && data.authorName.size() <= 100 &&
+             (!('authorEmail' in data) || (data.authorEmail is string && data.authorEmail.size() <= 160)) &&
+             data.confidential is bool &&
+             data.category is string && data.category.size() >= 1 && data.category.size() <= 60 &&
+             data.subject is string && data.subject.size() >= 3 && data.subject.size() <= 180 &&
+             data.message is string && data.message.size() >= 5 && data.message.size() <= 4000 &&
+             data.status in ['SUBMITTED', 'UNDER_REVIEW', 'IN_PROGRESS', 'RESOLVED', 'CLOSED'] &&
+             (!('staffReply' in data) || (data.staffReply is string && data.staffReply.size() <= 3000)) &&
+             (!('reviewedByName' in data) || (data.reviewedByName is string && data.reviewedByName.size() <= 100)) &&
+             data.createdAt is timestamp && data.createdAt <= request.time &&
+             data.updatedAt is timestamp && data.updatedAt <= request.time;
+    }
+
+    function isValidAuditLog(data, instId) {
+      return data.institutionId == instId &&
+             data.actorUid == request.auth.uid &&
+             data.actorName is string && data.actorName.size() >= 1 && data.actorName.size() <= 100 &&
+             data.actorRole is string && data.actorRole.size() >= 1 && data.actorRole.size() <= 40 &&
+             data.actionType is string && data.actionType.size() >= 1 && data.actionType.size() <= 60 &&
+             data.targetSummary is string && data.targetSummary.size() >= 1 && data.targetSummary.size() <= 200 &&
+             data.details is string && data.details.size() <= 1000 &&
+             data.createdAt is timestamp && data.createdAt <= request.time;
+    }
+
+    // --- USER INSTITUTION LINKS ---
+    match /user_institutions/{userId}/joined/{institutionId} {
+      allow get: if isSignedIn() && request.auth.uid == userId && isValidId(institutionId);
+      allow list: if isSignedIn() && request.auth.uid == userId;
+      allow create: if isSignedIn() &&
+                       request.auth.uid == userId &&
+                       isValidId(institutionId) &&
+                       isValidUserInstitutionLink(incoming(), userId, institutionId);
+      allow update: if isSignedIn() &&
+                       request.auth.uid == userId &&
+                       isValidId(institutionId) &&
+                       incoming().joinedAt == existing().joinedAt &&
+                       isValidUserInstitutionLink(incoming(), userId, institutionId);
+      allow delete: if isSignedIn() && request.auth.uid == userId && isValidId(institutionId);
+    }
+
+    // --- PUBLIC-SAFE INSTITUTION ID LOOKUP (NO ENUMERATION / NO LIST) ---
+    match /institution_codes/{institutionId} {
+      allow get: if isSignedIn() && isValidId(institutionId);
+      allow list: if false;
+      allow create: if isSignedIn() &&
+                       isValidId(institutionId) &&
+                       incoming().deanUid == request.auth.uid &&
+                       incoming().keys().hasAll(['institutionId', 'name', 'tagline', 'accentColorKey', 'deanUid', 'studentPassEnabled', 'createdAt', 'updatedAt']) &&
+                       incoming().keys().hasOnly(['institutionId', 'name', 'tagline', 'accentColorKey', 'deanUid', 'studentPassEnabled', 'createdAt', 'updatedAt']) &&
+                       isValidInstitutionCode(incoming(), institutionId);
+      allow update: if isSignedIn() &&
+                       isValidId(institutionId) &&
+                       isDean(institutionId) &&
+                       incoming().institutionId == existing().institutionId &&
+                       incoming().deanUid == existing().deanUid &&
+                       incoming().createdAt == existing().createdAt &&
+                       isValidInstitutionCode(incoming(), institutionId) &&
+                       incoming().diff(existing()).affectedKeys().hasOnly(['name', 'tagline', 'accentColorKey', 'studentPassEnabled', 'updatedAt']);
+      allow delete: if false;
+    }
+
+    // --- TENANT ROOT: INSTITUTIONS ---
+    match /institutions/{institutionId} {
+      allow get: if isSignedIn() && isValidId(institutionId) && hasMembership(institutionId);
+      allow list: if false;
+      allow create: if isSignedIn() &&
+                       isValidId(institutionId) &&
+                       incoming().deanUid == request.auth.uid &&
+                       !exists(/databases/$(database)/documents/institutions/$(institutionId)) &&
+                       isValidInstitution(incoming(), institutionId);
+      allow update: if isSignedIn() &&
+                       isValidId(institutionId) &&
+                       isDean(institutionId) &&
+                       incoming().institutionId == existing().institutionId &&
+                       incoming().deanUid == existing().deanUid &&
+                       incoming().createdAt == existing().createdAt &&
+                       isValidInstitution(incoming(), institutionId);
+      allow delete: if false;
+
+      // --- MEMBERSHIPS ---
+      match /memberships/{memberId} {
+        allow get: if isSignedIn() && isValidId(memberId) &&
+                      (request.auth.uid == memberId || hasPerm(institutionId, 'MANAGE_USERS'));
+        allow list: if isSignedIn() &&
+                       (hasPerm(institutionId, 'MANAGE_USERS') || existing().uid == request.auth.uid);
+        allow create: if isSignedIn() &&
+                         isValidId(memberId) &&
+                         request.auth.uid == memberId &&
+                         isValidMembership(incoming(), institutionId, memberId) &&
+                         (
+                           // 1. First Dean registering the institution atomically
+                           (incoming().role == 'DEAN' &&
+                            incoming().joinMethod == 'DEAN_FOUNDER' &&
+                            incoming().status == 'ACTIVE' &&
+                            getAfter(/databases/$(database)/documents/institutions/$(institutionId)).data.deanUid == request.auth.uid) ||
+                           // 2. Dean-invited Admin, Staff, or Student Leader
+                           (incoming().joinMethod == 'INVITE' &&
+                            incoming().status == 'ACTIVE' &&
+                            request.auth.token.email_verified == true &&
+                            request.auth.token.email != null &&
+                            exists(/databases/$(database)/documents/institutions/$(institutionId)/invites/$(request.auth.token.email.lower())) &&
+                            get(/databases/$(database)/documents/institutions/$(institutionId)/invites/$(request.auth.token.email.lower())).data.status == 'PENDING' &&
+                            get(/databases/$(database)/documents/institutions/$(institutionId)/invites/$(request.auth.token.email.lower())).data.role == incoming().role &&
+                            get(/databases/$(database)/documents/institutions/$(institutionId)/invites/$(request.auth.token.email.lower())).data.permissions == incoming().permissions) ||
+                           // 3. Student joining via Dean-controlled Student Entry Pass
+                           (incoming().role == 'STUDENT' &&
+                            incoming().joinMethod == 'STUDENT_PASS' &&
+                            incoming().status == 'ACTIVE' &&
+                            incoming().permissions.hasOnly(['READ_NOTICE', 'VIEW_EVENTS', 'SUBMIT_FEEDBACK']) &&
+                            get(/databases/$(database)/documents/institutions/$(institutionId)).data.studentPassEnabled == true &&
+                            incoming().passHashProof == get(/databases/$(database)/documents/institutions/$(institutionId)).data.studentPassHash)
+                         );
+        allow update: if isSignedIn() &&
+                         isValidId(memberId) &&
+                         isValidMembership(incoming(), institutionId, memberId) &&
+                         incoming().uid == existing().uid &&
+                         incoming().institutionId == existing().institutionId &&
+                         incoming().joinMethod == existing().joinMethod &&
+                         incoming().createdAt == existing().createdAt &&
+                         (
+                           // Dean or User Manager updating member role/permissions/status (cannot demote/revoke Dean)
+                           (hasPerm(institutionId, 'MANAGE_USERS') &&
+                            (existing().role != 'DEAN' || (incoming().role == 'DEAN' && incoming().status == 'ACTIVE')) &&
+                            (incoming().role != 'DEAN' || existing().role == 'DEAN') &&
+                            incoming().diff(existing()).affectedKeys().hasOnly(['displayName', 'designation', 'department', 'role', 'permissions', 'scopedDepartments', 'status', 'updatedAt'])) ||
+                           // Active member updating own display name only
+                           (request.auth.uid == memberId &&
+                            existing().status == 'ACTIVE' &&
+                            incoming().diff(existing()).affectedKeys().hasOnly(['displayName', 'updatedAt']))
+                         );
+        allow delete: if isSignedIn() && isValidId(memberId) && isDean(institutionId) && existing().role != 'DEAN';
+      }
+
+      // --- INVITES ---
+      match /invites/{inviteEmail} {
+        allow get: if isSignedIn() &&
+                      isValidEmailKey(inviteEmail) &&
+                      (hasPerm(institutionId, 'MANAGE_USERS') || hasVerifiedEmail(inviteEmail));
+        allow list: if isSignedIn() && hasPerm(institutionId, 'MANAGE_USERS');
+        allow create: if isSignedIn() &&
+                         isValidEmailKey(inviteEmail) &&
+                         hasPerm(institutionId, 'MANAGE_USERS') &&
+                         incoming().invitedByUid == request.auth.uid &&
+                         isValidInvite(incoming(), institutionId, inviteEmail);
+        allow update: if isSignedIn() &&
+                         isValidEmailKey(inviteEmail) &&
+                         isValidInvite(incoming(), institutionId, inviteEmail) &&
+                         incoming().email == existing().email &&
+                         incoming().institutionId == existing().institutionId &&
+                         incoming().createdAt == existing().createdAt &&
+                         (
+                           hasPerm(institutionId, 'MANAGE_USERS') ||
+                           (hasVerifiedEmail(inviteEmail) &&
+                            existing().status == 'PENDING' &&
+                            incoming().status == 'CLAIMED' &&
+                            incoming().diff(existing()).affectedKeys().hasOnly(['status', 'updatedAt']))
+                         );
+        allow delete: if isSignedIn() && isValidEmailKey(inviteEmail) && hasPerm(institutionId, 'MANAGE_USERS');
+      }
+
+      // --- NOTICES (CANONICAL + MIRRORED VISIBILITY TARGETS) ---
+      match /notices/{noticeId} {
+        allow get, list: if isActiveMember(institutionId);
+        allow create: if isActiveMember(institutionId) &&
+                         isValidId(noticeId) &&
+                         (hasPerm(institutionId, 'CREATE_NOTICE') ||
+                          hasPerm(institutionId, 'PUBLISH_MAJOR_BOARD') ||
+                          hasPerm(institutionId, 'PUBLISH_DEPT_BOARD')) &&
+                         incoming().publisherUid == request.auth.uid &&
+                         isValidNotice(incoming(), institutionId);
+        allow update: if isActiveMember(institutionId) &&
+                         isValidId(noticeId) &&
+                         isValidNotice(incoming(), institutionId) &&
+                         incoming().institutionId == existing().institutionId &&
+                         incoming().publisherUid == existing().publisherUid &&
+                         incoming().createdAt == existing().createdAt &&
+                         (hasPerm(institutionId, 'EDIT_NOTICE') ||
+                          hasPerm(institutionId, 'APPROVE_NOTICE') ||
+                          hasPerm(institutionId, 'WITHDRAW_ARCHIVE') ||
+                          hasPerm(institutionId, 'PIN_EMERGENCY') ||
+                          existing().publisherUid == request.auth.uid);
+        allow delete: if isDean(institutionId) && isValidId(noticeId);
+
+        match /revisions/{revisionId} {
+          allow get, list: if isActiveMember(institutionId);
+          allow create: if isActiveMember(institutionId) &&
+                           isValidId(revisionId) &&
+                           (hasPerm(institutionId, 'CREATE_NOTICE') ||
+                            hasPerm(institutionId, 'PUBLISH_MAJOR_BOARD') ||
+                            hasPerm(institutionId, 'PUBLISH_DEPT_BOARD') ||
+                            hasPerm(institutionId, 'EDIT_NOTICE') ||
+                            hasPerm(institutionId, 'APPROVE_NOTICE') ||
+                            hasPerm(institutionId, 'WITHDRAW_ARCHIVE') ||
+                            hasPerm(institutionId, 'PIN_EMERGENCY') ||
+                            getAfter(/databases/$(database)/documents/institutions/$(institutionId)/notices/$(noticeId)).data.publisherUid == request.auth.uid) &&
+                           isValidNoticeRevision(incoming(), institutionId, noticeId);
+          allow update, delete: if false;
+        }
+
+        match /reads/{memberUid} {
+          allow get: if isActiveMember(institutionId) &&
+                        isValidId(memberUid) &&
+                        (request.auth.uid == memberUid || isDean(institutionId) || hasPerm(institutionId, 'VIEW_ANALYTICS'));
+          allow list: if isActiveMember(institutionId) &&
+                         (isDean(institutionId) || hasPerm(institutionId, 'VIEW_ANALYTICS'));
+          allow create, update: if isActiveMember(institutionId) &&
+                                   isValidId(memberUid) &&
+                                   request.auth.uid == memberUid &&
+                                   isValidReadReceipt(incoming(), institutionId, noticeId, memberUid);
+          allow delete: if false;
+        }
+      }
+
+      // --- EVENTS & SPORTS ---
+      match /events/{eventId} {
+        allow get, list: if isActiveMember(institutionId);
+        allow create: if isActiveMember(institutionId) &&
+                         isValidId(eventId) &&
+                         (hasPerm(institutionId, 'MANAGE_EVENTS') || hasPerm(institutionId, 'MANAGE_SPORTS')) &&
+                         incoming().createdByUid == request.auth.uid &&
+                         isValidCampusEvent(incoming(), institutionId);
+        allow update: if isActiveMember(institutionId) &&
+                         isValidId(eventId) &&
+                         isValidCampusEvent(incoming(), institutionId) &&
+                         incoming().institutionId == existing().institutionId &&
+                         incoming().createdByUid == existing().createdByUid &&
+                         incoming().createdAt == existing().createdAt &&
+                         (
+                           hasPerm(institutionId, 'MANAGE_EVENTS') ||
+                           hasPerm(institutionId, 'MANAGE_SPORTS') ||
+                           incoming().diff(existing()).affectedKeys().hasOnly(['registeredCount', 'updatedAt'])
+                         );
+        allow delete: if isDean(institutionId) && isValidId(eventId);
+
+        match /registrations/{memberUid} {
+          allow get: if isActiveMember(institutionId) &&
+                        isValidId(memberUid) &&
+                        (request.auth.uid == memberUid || hasPerm(institutionId, 'MANAGE_EVENTS') || hasPerm(institutionId, 'MANAGE_SPORTS'));
+          allow list: if isActiveMember(institutionId) &&
+                         (hasPerm(institutionId, 'MANAGE_EVENTS') || hasPerm(institutionId, 'MANAGE_SPORTS') || existing().uid == request.auth.uid);
+          allow create: if isActiveMember(institutionId) &&
+                           isValidId(memberUid) &&
+                           request.auth.uid == memberUid &&
+                           isValidEventRegistration(incoming(), institutionId, eventId, memberUid);
+          allow delete: if isActiveMember(institutionId) &&
+                           isValidId(memberUid) &&
+                           request.auth.uid == memberUid;
+          allow update: if false;
+        }
+      }
+
+      // --- FEEDBACK (NORMAL + CONFIDENTIAL WITH DEAN TOGGLE) ---
+      match /feedback/{feedbackId} {
+        allow get: if isActiveMember(institutionId) &&
+                      isValidId(feedbackId) &&
+                      (existing().authorUid == request.auth.uid ||
+                       (!existing().confidential && hasPerm(institutionId, 'VIEW_FEEDBACK')) ||
+                       (existing().confidential && hasPerm(institutionId, 'VIEW_CONFIDENTIAL_FEEDBACK')));
+        allow list: if isActiveMember(institutionId) &&
+                       (existing().authorUid == request.auth.uid ||
+                        (!existing().confidential && hasPerm(institutionId, 'VIEW_FEEDBACK')) ||
+                        (existing().confidential && hasPerm(institutionId, 'VIEW_CONFIDENTIAL_FEEDBACK')));
+        allow create: if isActiveMember(institutionId) &&
+                         isValidId(feedbackId) &&
+                         incoming().authorUid == request.auth.uid &&
+                         incoming().status == 'SUBMITTED' &&
+                         (!incoming().confidential ||
+                          get(/databases/$(database)/documents/institutions/$(institutionId)).data.confidentialFeedbackEnabled == true) &&
+                         isValidFeedback(incoming(), institutionId);
+        allow update: if isActiveMember(institutionId) &&
+                         isValidId(feedbackId) &&
+                         isValidFeedback(incoming(), institutionId) &&
+                         incoming().institutionId == existing().institutionId &&
+                         incoming().authorUid == existing().authorUid &&
+                         incoming().confidential == existing().confidential &&
+                         incoming().createdAt == existing().createdAt &&
+                         ((!existing().confidential && hasPerm(institutionId, 'VIEW_FEEDBACK')) ||
+                          (existing().confidential && hasPerm(institutionId, 'VIEW_CONFIDENTIAL_FEEDBACK'))) &&
+                         incoming().diff(existing()).affectedKeys().hasOnly(['status', 'staffReply', 'reviewedByName', 'updatedAt']);
+        allow delete: if false;
+      }
+
+      // --- AUDIT LOGS (IMMUTABLE APPEND-ONLY) ---
+      match /audit_logs/{logId} {
+        allow get, list: if isActiveMember(institutionId) &&
+                            (isDean(institutionId) || hasPerm(institutionId, 'VIEW_AUDIT'));
+        allow create: if isActiveMember(institutionId) &&
+                         isValidId(logId) &&
+                         isValidAuditLog(incoming(), institutionId);
+        allow update, delete: if false;
+      }
+    }
+  }
+}

@@ -1,0 +1,6 @@
+{
+  "name": "Notice Board",
+  "description": "Multi-institution, Dean-first campus communication platform with Major Board, department boards, camera document scanning, campus events, sports, and confidential feedback.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

@@ -1,0 +1,311 @@
+{
+  "entities": {
+    "UserInstitutionLink": {
+      "title": "UserInstitutionLink",
+      "description": "Index of institutions a signed-in user belongs to.",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string" },
+        "institutionId": { "type": "string" },
+        "institutionName": { "type": "string" },
+        "role": { "type": "string", "enum": ["DEAN", "ADMIN", "STAFF", "STUDENT_LEADER", "STUDENT"] },
+        "accentColorKey": { "type": "string" },
+        "joinedAt": { "type": "string", "format": "date-time", "description": "Server timestamp" },
+        "updatedAt": { "type": "string", "format": "date-time", "description": "Server timestamp" }
+      },
+      "required": ["uid", "institutionId", "institutionName", "role", "accentColorKey", "joinedAt", "updatedAt"]
+    },
+    "InstitutionCode": {
+      "title": "InstitutionCode",
+      "description": "Safe public-identity lookup document keyed by permanent Institution ID.",
+      "type": "object",
+      "properties": {
+        "institutionId": { "type": "string" },
+        "name": { "type": "string" },
+        "tagline": { "type": "string" },
+        "accentColorKey": { "type": "string" },
+        "deanUid": { "type": "string" },
+        "studentPassEnabled": { "type": "boolean" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["institutionId", "name", "tagline", "accentColorKey", "deanUid", "studentPassEnabled", "createdAt", "updatedAt"]
+    },
+    "Institution": {
+      "title": "Institution",
+      "description": "Isolated tenant configuration, branding, dropdown templates, and Drive metadata.",
+      "type": "object",
+      "properties": {
+        "institutionId": { "type": "string" },
+        "name": { "type": "string" },
+        "tagline": { "type": "string" },
+        "contactEmail": { "type": "string" },
+        "contactPhone": { "type": "string" },
+        "accentColorKey": { "type": "string" },
+        "deanUid": { "type": "string" },
+        "deanName": { "type": "string" },
+        "studentPassEnabled": { "type": "boolean" },
+        "studentPassHash": { "type": "string" },
+        "confidentialFeedbackEnabled": { "type": "boolean" },
+        "driveConnected": { "type": "boolean" },
+        "driveAccountEmail": { "type": "string" },
+        "driveFolderName": { "type": "string" },
+        "driveFolderId": { "type": "string" },
+        "departments": { "type": "array" },
+        "categories": { "type": "array" },
+        "priorities": { "type": "array" },
+        "activityTypes": { "type": "array" },
+        "sportTypes": { "type": "array" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": [
+        "institutionId", "name", "tagline", "contactEmail", "accentColorKey",
+        "deanUid", "deanName", "studentPassEnabled", "studentPassHash",
+        "confidentialFeedbackEnabled", "driveConnected", "departments",
+        "categories", "priorities", "activityTypes", "sportTypes",
+        "createdAt", "updatedAt"
+      ]
+    },
+    "InstitutionMembership": {
+      "title": "InstitutionMembership",
+      "description": "Tenant-scoped member record with role, status, and granular permissions.",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string" },
+        "institutionId": { "type": "string" },
+        "displayName": { "type": "string" },
+        "email": { "type": "string" },
+        "designation": { "type": "string" },
+        "department": { "type": "string" },
+        "role": { "type": "string", "enum": ["DEAN", "ADMIN", "STAFF", "STUDENT_LEADER", "STUDENT"] },
+        "permissions": { "type": "array" },
+        "scopedDepartments": { "type": "array" },
+        "status": { "type": "string", "enum": ["ACTIVE", "SUSPENDED", "REVOKED"] },
+        "joinMethod": { "type": "string", "enum": ["DEAN_FOUNDER", "INVITE", "STUDENT_PASS"] },
+        "passHashProof": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["uid", "institutionId", "displayName", "email", "role", "permissions", "scopedDepartments", "status", "joinMethod", "createdAt", "updatedAt"]
+    },
+    "MemberInvite": {
+      "title": "MemberInvite",
+      "description": "Dean-created individual account invitation for Admin, Staff, or Student Leader.",
+      "type": "object",
+      "properties": {
+        "email": { "type": "string" },
+        "institutionId": { "type": "string" },
+        "displayName": { "type": "string" },
+        "designation": { "type": "string" },
+        "department": { "type": "string" },
+        "role": { "type": "string", "enum": ["ADMIN", "STAFF", "STUDENT_LEADER"] },
+        "permissions": { "type": "array" },
+        "scopedDepartments": { "type": "array" },
+        "status": { "type": "string", "enum": ["PENDING", "CLAIMED", "REVOKED"] },
+        "invitedByUid": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["email", "institutionId", "displayName", "role", "permissions", "scopedDepartments", "status", "invitedByUid", "createdAt", "updatedAt"]
+    },
+    "Notice": {
+      "title": "Notice",
+      "description": "Canonical notice supporting Major Board and mirrored department visibility.",
+      "type": "object",
+      "properties": {
+        "institutionId": { "type": "string" },
+        "title": { "type": "string" },
+        "normalizedTitle": { "type": "string" },
+        "description": { "type": "string" },
+        "category": { "type": "string" },
+        "priority": { "type": "string", "enum": ["EMERGENCY", "URGENT", "NORMAL"] },
+        "originDepartment": { "type": "string" },
+        "visibilityTargets": { "type": "array" },
+        "targetAudience": { "type": "string" },
+        "lifecycleStatus": { "type": "string", "enum": ["DRAFT", "SCHEDULED", "PUBLISHED", "UPDATED", "WITHDRAWN", "EXPIRED", "ARCHIVED"] },
+        "pinned": { "type": "boolean" },
+        "publisherUid": { "type": "string" },
+        "publisherName": { "type": "string" },
+        "publisherRole": { "type": "string" },
+        "revisionNumber": { "type": "integer" },
+        "idempotencyKey": { "type": "string" },
+        "attachments": { "type": "array" },
+        "scheduledPublishAt": { "type": "string", "format": "date-time" },
+        "publishedAt": { "type": "string", "format": "date-time" },
+        "expiresAt": { "type": "string", "format": "date-time" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": [
+        "institutionId", "title", "normalizedTitle", "description", "category",
+        "priority", "originDepartment", "visibilityTargets", "targetAudience",
+        "lifecycleStatus", "pinned", "publisherUid", "publisherName", "publisherRole",
+        "revisionNumber", "idempotencyKey", "attachments", "createdAt", "updatedAt"
+      ]
+    },
+    "NoticeRevision": {
+      "title": "NoticeRevision",
+      "description": "Immutable revision history entry for canonical notice edits/corrections.",
+      "type": "object",
+      "properties": {
+        "institutionId": { "type": "string" },
+        "noticeId": { "type": "string" },
+        "revisionNumber": { "type": "integer" },
+        "title": { "type": "string" },
+        "description": { "type": "string" },
+        "lifecycleStatus": { "type": "string" },
+        "editedByUid": { "type": "string" },
+        "editedByName": { "type": "string" },
+        "changeSummary": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["institutionId", "noticeId", "revisionNumber", "title", "description", "lifecycleStatus", "editedByUid", "editedByName", "changeSummary", "createdAt"]
+    },
+    "NoticeReadReceipt": {
+      "title": "NoticeReadReceipt",
+      "description": "Individual read/acknowledgement receipt for verified non-shared accounts.",
+      "type": "object",
+      "properties": {
+        "institutionId": { "type": "string" },
+        "noticeId": { "type": "string" },
+        "uid": { "type": "string" },
+        "displayName": { "type": "string" },
+        "acknowledged": { "type": "boolean" },
+        "readAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["institutionId", "noticeId", "uid", "displayName", "acknowledged", "readAt"]
+    },
+    "CampusEvent": {
+      "title": "CampusEvent",
+      "description": "Campus activity or sports event with fixtures, teams, and results.",
+      "type": "object",
+      "properties": {
+        "institutionId": { "type": "string" },
+        "eventKind": { "type": "string", "enum": ["ACTIVITY", "SPORT"] },
+        "subType": { "type": "string" },
+        "title": { "type": "string" },
+        "description": { "type": "string" },
+        "organizer": { "type": "string" },
+        "venue": { "type": "string" },
+        "scheduleText": { "type": "string" },
+        "eligibility": { "type": "string" },
+        "registrationOpen": { "type": "boolean" },
+        "registeredCount": { "type": "integer" },
+        "teamsInfo": { "type": "string" },
+        "fixturesSummary": { "type": "string" },
+        "resultsSummary": { "type": "string" },
+        "status": { "type": "string", "enum": ["UPCOMING", "ONGOING", "COMPLETED", "CANCELLED"] },
+        "createdByUid": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": [
+        "institutionId", "eventKind", "subType", "title", "description",
+        "organizer", "venue", "scheduleText", "eligibility", "registrationOpen",
+        "registeredCount", "status", "createdByUid", "createdAt", "updatedAt"
+      ]
+    },
+    "EventRegistration": {
+      "title": "EventRegistration",
+      "description": "Member registration record for an activity or sports event.",
+      "type": "object",
+      "properties": {
+        "institutionId": { "type": "string" },
+        "eventId": { "type": "string" },
+        "uid": { "type": "string" },
+        "displayName": { "type": "string" },
+        "department": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["institutionId", "eventId", "uid", "displayName", "department", "createdAt"]
+    },
+    "FeedbackItem": {
+      "title": "FeedbackItem",
+      "description": "Normal or confidential campus feedback with status workflow and audited identity.",
+      "type": "object",
+      "properties": {
+        "institutionId": { "type": "string" },
+        "authorUid": { "type": "string" },
+        "authorName": { "type": "string" },
+        "authorEmail": { "type": "string" },
+        "confidential": { "type": "boolean" },
+        "category": { "type": "string" },
+        "subject": { "type": "string" },
+        "message": { "type": "string" },
+        "status": { "type": "string", "enum": ["SUBMITTED", "UNDER_REVIEW", "IN_PROGRESS", "RESOLVED", "CLOSED"] },
+        "staffReply": { "type": "string" },
+        "reviewedByName": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["institutionId", "authorUid", "authorName", "confidential", "category", "subject", "message", "status", "createdAt", "updatedAt"]
+    },
+    "AuditLog": {
+      "title": "AuditLog",
+      "description": "Immutable security and governance audit trail per institution.",
+      "type": "object",
+      "properties": {
+        "institutionId": { "type": "string" },
+        "actorUid": { "type": "string" },
+        "actorName": { "type": "string" },
+        "actorRole": { "type": "string" },
+        "actionType": { "type": "string" },
+        "targetSummary": { "type": "string" },
+        "details": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["institutionId", "actorUid", "actorName", "actorRole", "actionType", "targetSummary", "details", "createdAt"]
+    }
+  },
+  "firestore": {
+    "/user_institutions/{userId}/joined/{institutionId}": {
+      "schema": { "$ref": "#/entities/UserInstitutionLink" },
+      "description": "User's joined institution references for quick switching."
+    },
+    "/institution_codes/{institutionId}": {
+      "schema": { "$ref": "#/entities/InstitutionCode" },
+      "description": "Public-safe lookup by exact Institution ID without exposing private records."
+    },
+    "/institutions/{institutionId}": {
+      "schema": { "$ref": "#/entities/Institution" },
+      "description": "Tenant root document with institution profile, settings, templates, and Drive metadata."
+    },
+    "/institutions/{institutionId}/memberships/{memberId}": {
+      "schema": { "$ref": "#/entities/InstitutionMembership" },
+      "description": "Authenticated tenant membership, role, status, and granular permissions."
+    },
+    "/institutions/{institutionId}/invites/{inviteEmail}": {
+      "schema": { "$ref": "#/entities/MemberInvite" },
+      "description": "Dean-provisioned individual Admin/Staff/Student Leader invitations."
+    },
+    "/institutions/{institutionId}/notices/{noticeId}": {
+      "schema": { "$ref": "#/entities/Notice" },
+      "description": "Canonical notices supporting Major Board and mirrored department visibility."
+    },
+    "/institutions/{institutionId}/notices/{noticeId}/revisions/{revisionId}": {
+      "schema": { "$ref": "#/entities/NoticeRevision" },
+      "description": "Immutable notice revision history."
+    },
+    "/institutions/{institutionId}/notices/{noticeId}/reads/{memberUid}": {
+      "schema": { "$ref": "#/entities/NoticeReadReceipt" },
+      "description": "Per-member notice read/acknowledgement tracking."
+    },
+    "/institutions/{institutionId}/events/{eventId}": {
+      "schema": { "$ref": "#/entities/CampusEvent" },
+      "description": "Campus activities and sports events/tournaments."
+    },
+    "/institutions/{institutionId}/events/{eventId}/registrations/{memberUid}": {
+      "schema": { "$ref": "#/entities/EventRegistration" },
+      "description": "Event registrations per member."
+    },
+    "/institutions/{institutionId}/feedback/{feedbackId}": {
+      "schema": { "$ref": "#/entities/FeedbackItem" },
+      "description": "Normal and confidential campus feedback."
+    },
+    "/institutions/{institutionId}/audit_logs/{logId}": {
+      "schema": { "$ref": "#/entities/AuditLog" },
+      "description": "Immutable institution audit trail."
+    }
+  }
+}
