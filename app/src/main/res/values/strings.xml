@@ -1,3 +1,4 @@
 <resources>
-    <string name="app_name">Notice Board</string>
+    <string name="app_name">NOTICE BOARD</string>
+    <string name="firestore_database_id" translatable="false">(default)</string>
 </resources>
