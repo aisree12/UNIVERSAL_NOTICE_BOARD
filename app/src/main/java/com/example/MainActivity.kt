@@ -4,6 +4,10 @@ import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.padding
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
@@ -12,15 +16,20 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.dp
 import androidx.credentials.CredentialManager
 import androidx.lifecycle.ViewModelProvider.AndroidViewModelFactory.Companion.APPLICATION_KEY
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
+import androidx.compose.material3.Text
 import com.example.auth.AuthScreen
-import com.example.auth.authStateFlow
 import com.example.auth.signOutUser
 import com.example.data.CampusRepository
 import com.example.data.OnboardingRepository
@@ -32,6 +41,7 @@ import com.example.ui.theme.NoticeBoardTheme
 import com.example.ui.theme.ThemeMode
 import com.example.viewmodel.CampusViewModel
 import com.example.viewmodel.OnboardingViewModel
+import com.google.firebase.FirebaseApp
 import com.google.firebase.Firebase
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.auth.auth
@@ -51,6 +61,19 @@ class MainActivity : ComponentActivity() {
 @Composable
 fun NoticeBoardApp() {
     val context = LocalContext.current
+
+    // A fresh checkout intentionally contains no private Firebase project configuration.
+    // Do not access FirebaseAuth until a backend has been configured for this installation.
+    val firebaseConfigured = remember(context) {
+        FirebaseApp.getApps(context).isNotEmpty() || FirebaseApp.initializeApp(context) != null
+    }
+    if (!firebaseConfigured) {
+        MaterialTheme {
+            BackendConfigurationRequired()
+        }
+        return
+    }
+
     val scope = rememberCoroutineScope()
     val prefs = remember { UserPreferencesDataStore(context) }
     val credentialManager = remember { CredentialManager.create(context) }
@@ -150,6 +173,32 @@ fun NoticeBoardApp() {
                     }
                 }
             }
+        }
+    }
+}
+
+@Composable
+private fun BackendConfigurationRequired() {
+    Surface(modifier = Modifier.fillMaxSize()) {
+        Column(
+            modifier = Modifier.fillMaxSize().padding(28.dp),
+            verticalArrangement = Arrangement.Center
+        ) {
+            Text(
+                text = "NOTICE BOARD",
+                style = MaterialTheme.typography.headlineMedium,
+                fontWeight = FontWeight.Bold
+            )
+            Text(
+                text = "Backend setup required",
+                style = MaterialTheme.typography.titleLarge,
+                modifier = Modifier.padding(top = 18.dp)
+            )
+            Text(
+                text = "This build does not contain institution or Firebase credentials. Connect the approved institution backend before signing in. No private backend secrets are embedded in this APK.",
+                style = MaterialTheme.typography.bodyLarge,
+                modifier = Modifier.padding(top = 10.dp)
+            )
         }
     }
 }
