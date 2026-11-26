@@ -37,6 +37,16 @@ jobs:
           yes | sdkmanager --licenses
           sdkmanager "platforms;android-36.1" "build-tools;36.1.0"
 
+      - name: Restore Firebase Android configuration
+        env:
+          GOOGLE_SERVICES_JSON_BASE64: ${{ secrets.NOTICE_BOARD_GOOGLE_SERVICES_JSON_BASE64 }}
+        run: |
+          set -euo pipefail
+          test -n "$GOOGLE_SERVICES_JSON_BASE64" || { echo "::error::Missing NOTICE_BOARD_GOOGLE_SERVICES_JSON_BASE64 repository secret"; exit 1; }
+          printf '%s' "$GOOGLE_SERVICES_JSON_BASE64" | base64 --decode > app/google-services.json
+          python3 -c 'import json; d=json.load(open("app/google-services.json")); assert d["project_info"]["project_id"] == "gen-lang-client-0143905151"; assert any(c["client_info"]["android_client_info"]["package_name"] == "com.aistudio.noticeboard.kxmpzq" for c in d["client"])'
+          echo "Firebase configuration validated for UNIVERSAL_NOTICE_BOARD."
+
       - name: Restore permanent Android debug signing key
         env:
           KEYSTORE_BASE64: ${{ secrets.NOTICE_BOARD_DEBUG_KEYSTORE_BASE64 }}
