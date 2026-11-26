@@ -2,7 +2,7 @@ name: NOTICE BOARD Android APK
 
 on:
   push:
-    branches: [ "main" ]
+    branches: [ "main", "fix/permanent-debug-signing" ]
   workflow_dispatch:
 
 permissions:
@@ -37,18 +37,27 @@ jobs:
           yes | sdkmanager --licenses
           sdkmanager "platforms;android-36.1" "build-tools;36.1.0"
 
-      - name: Generate temporary Android debug signing key
+      - name: Restore permanent Android debug signing key
+        env:
+          KEYSTORE_BASE64: ${{ secrets.NOTICE_BOARD_DEBUG_KEYSTORE_BASE64 }}
+          KEY_ALIAS: ${{ secrets.NOTICE_BOARD_DEBUG_KEY_ALIAS }}
+          STORE_PASSWORD: ${{ secrets.NOTICE_BOARD_DEBUG_STORE_PASSWORD }}
+          KEY_PASSWORD: ${{ secrets.NOTICE_BOARD_DEBUG_KEY_PASSWORD }}
         run: |
-          keytool -genkeypair -v \
-            -keystore debug.keystore \
-            -storepass android \
-            -alias androiddebugkey \
-            -keypass android \
-            -keyalg RSA -keysize 2048 -validity 10000 \
-            -dname "CN=Android Debug,O=Android,C=US"
+          set -euo pipefail
+          test -n "$KEYSTORE_BASE64" || { echo "::error::Missing NOTICE_BOARD_DEBUG_KEYSTORE_BASE64 secret"; exit 1; }
+          test -n "$KEY_ALIAS" || { echo "::error::Missing NOTICE_BOARD_DEBUG_KEY_ALIAS secret"; exit 1; }
+          test -n "$STORE_PASSWORD" || { echo "::error::Missing NOTICE_BOARD_DEBUG_STORE_PASSWORD secret"; exit 1; }
+          test -n "$KEY_PASSWORD" || { echo "::error::Missing NOTICE_BOARD_DEBUG_KEY_PASSWORD secret"; exit 1; }
+          printf '%s' "$KEYSTORE_BASE64" | base64 --decode > debug.keystore
+          keytool -list -keystore debug.keystore -storepass "$STORE_PASSWORD" -alias "$KEY_ALIAS"
 
-      - name: Build debug APK
+      - name: Build debug APK with permanent signing key
         shell: bash
+        env:
+          NOTICE_BOARD_DEBUG_KEY_ALIAS: ${{ secrets.NOTICE_BOARD_DEBUG_KEY_ALIAS }}
+          NOTICE_BOARD_DEBUG_STORE_PASSWORD: ${{ secrets.NOTICE_BOARD_DEBUG_STORE_PASSWORD }}
+          NOTICE_BOARD_DEBUG_KEY_PASSWORD: ${{ secrets.NOTICE_BOARD_DEBUG_KEY_PASSWORD }}
         run: |
           set -o pipefail
           gradle --no-daemon --stacktrace clean :app:assembleDebug 2>&1 | tee build.log
@@ -62,12 +71,15 @@ jobs:
           if-no-files-found: ignore
           retention-days: 14
 
-      - name: Verify APK
+      - name: Verify APK and print signing certificate fingerprints
         shell: bash
         run: |
-          test -s app/build/outputs/apk/debug/app-debug.apk
-          sha256sum app/build/outputs/apk/debug/app-debug.apk
-          ls -lh app/build/outputs/apk/debug/app-debug.apk
+          set -euo pipefail
+          APK="app/build/outputs/apk/debug/app-debug.apk"
+          test -s "$APK"
+          sha256sum "$APK"
+          ls -lh "$APK"
+          apksigner verify --print-certs "$APK"
 
       - name: Upload installable debug APK
         uses: actions/upload-artifact@v4
